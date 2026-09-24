@@ -1,0 +1,21 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.nuix.interview'
+version = '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'com.google.guava:guava:33.5.0-jre'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:6.1.0-M1'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:6.1.0-M1'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+}
