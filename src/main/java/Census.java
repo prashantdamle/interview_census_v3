@@ -1,6 +1,6 @@
 import java.io.Closeable;
 import java.io.IOException;
-import java.io.UncheckedIOException;
+import java.lang.System.Logger.Level;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -27,6 +27,8 @@ public class Census {
      */
     private static final int MAX_AGE = 150;
 
+    private static final System.Logger LOGGER = System.getLogger(Census.class.getName());
+
     /**
      * Factory for iterators.
      */
@@ -46,18 +48,7 @@ public class Census {
      * the 3 most common ages in the format specified by {@link #OUTPUT_FORMAT}.
      */
     public String[] top3Ages(String region) {
-        long[] counts = new long[MAX_AGE + 1];
-        try (AgeInputIterator iterator = iteratorFactory.apply(region)) {
-            while (iterator.hasNext()) {
-                Integer age = iterator.next();
-                if (isValidAge(age)) {
-                    counts[age]++;
-                }
-            }
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-        return toTop3(counts);
+        return toTop3(countRegion(region));
     }
 
     /**
@@ -75,6 +66,52 @@ public class Census {
 //        };
 
         throw new UnsupportedOperationException();
+    }
+
+    /**
+     * Counts the ages of one region into a histogram (index = age, value = number of people).
+     *
+     * @throws CensusException if the region cannot be opened, or fails while being read or closed. The iterator is
+     *                         always closed once opened.
+     */
+    private long[] countRegion(String region) {
+        AgeInputIterator iterator = openRegion(region);
+        long[] counts = new long[MAX_AGE + 1];
+        try (iterator) {
+            while (iterator.hasNext()) {
+                Integer age = iterator.next();
+                if (isValidAge(age)) {
+                    counts[age]++;
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            throw failure("Failed to read region " + region, e);
+        }
+        return counts;
+    }
+
+    /**
+     * @throws CensusException if the factory throws or returns null.
+     */
+    private AgeInputIterator openRegion(String region) {
+        AgeInputIterator iterator;
+        try {
+            iterator = iteratorFactory.apply(region);
+        } catch (RuntimeException e) {
+            throw failure("Failed to open region " + region, e);
+        }
+        if (iterator == null) {
+            throw failure("Failed to open region " + region + ": the factory returned no iterator", null);
+        }
+        return iterator;
+    }
+
+    /**
+     * Logs the failure and returns the exception for the caller to throw.
+     */
+    private static CensusException failure(String message, Throwable cause) {
+        LOGGER.log(Level.ERROR, message, cause);
+        return new CensusException(message, cause);
     }
 
     /**

@@ -16,6 +16,21 @@ public class TestCensus {
     private static Map<String, Census.AgeInputIterator> createdIterators = new HashMap<>();
 
     @Test
+    @DisplayName("Single region the factory fails to open (throws) throws CensusException naming the region")
+    public void testCensusSingle_FactoryThrows_ThrowsCensusException() {
+        CensusException e = Assertions.assertThrows(CensusException.class, () -> census.top3Ages("unknownRegion"));
+        Assertions.assertTrue(e.getMessage().contains("unknownRegion"), "Message doesn't name the region.");
+    }
+
+    @Test
+    @DisplayName("Single region the factory fails to open (returns null) throws CensusException naming the region")
+    public void testCensusSingle_FactoryReturnsNull_ThrowsCensusException() {
+        Census nullFactoryCensus = new Census(region -> null);
+        CensusException e = Assertions.assertThrows(CensusException.class, () -> nullFactoryCensus.top3Ages("anyRegion"));
+        Assertions.assertTrue(e.getMessage().contains("anyRegion"), "Message doesn't name the region.");
+    }
+
+    @Test
     @DisplayName("Single region with no data returns an empty array (not null) and closes the iterator")
     public void testCensusSingle_EmptyInput_ClosesIterator() {
         AgeIteratorWrapper iterator =
@@ -87,6 +102,46 @@ public class TestCensus {
         Assertions.assertTrue(strings != null, "Invalid result null.");
         System.out.println(Arrays.toString(strings));
         Assertions.assertArrayEquals(new String[]{"1:138=93", "2:10=85", "2:35=85", "3:90=84", "3:106=84"}, strings);
+    }
+
+    @Test
+    @DisplayName("Single region whose next() fails mid-read throws CensusException naming the region and closes the iterator")
+    public void testCensusSingle_NextThrowsMidRead_ThrowsCensusException() {
+        AgeIteratorWrapper iterator =
+                registerIterator(new AgeIteratorWrapper(ImmutableList.of(1, 2, 3).iterator(), "nextFails") {
+                    private int calls = 0;
+
+                    @Override
+                    public Integer next() {
+                        if (++calls == 2) {
+                            throw new RuntimeException("Fake read failure");
+                        }
+                        return super.next();
+                    }
+                });
+        CensusException e = Assertions.assertThrows(CensusException.class, () -> census.top3Ages("nextFails"));
+        Assertions.assertTrue(e.getMessage().contains("nextFails"), "Message doesn't name the region.");
+        Assertions.assertTrue(iterator.closed, "Iterator hasn't been closed.");
+    }
+
+    @Test
+    @DisplayName("Single region whose hasNext() fails mid-read throws CensusException naming the region and closes the iterator")
+    public void testCensusSingle_HasNextThrowsMidRead_ThrowsCensusException() {
+        AgeIteratorWrapper iterator =
+                registerIterator(new AgeIteratorWrapper(ImmutableList.of(1, 2, 3).iterator(), "hasNextFails") {
+                    private int calls = 0;
+
+                    @Override
+                    public boolean hasNext() {
+                        if (++calls == 2) {
+                            throw new RuntimeException("Fake read failure");
+                        }
+                        return super.hasNext();
+                    }
+                });
+        CensusException e = Assertions.assertThrows(CensusException.class, () -> census.top3Ages("hasNextFails"));
+        Assertions.assertTrue(e.getMessage().contains("hasNextFails"), "Message doesn't name the region.");
+        Assertions.assertTrue(iterator.closed, "Iterator hasn't been closed.");
     }
 
     @Test
