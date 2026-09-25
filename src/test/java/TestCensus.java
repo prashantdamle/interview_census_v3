@@ -1,5 +1,6 @@
 import com.google.common.collect.ImmutableList;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -15,6 +16,7 @@ public class TestCensus {
     private static Map<String, Census.AgeInputIterator> createdIterators = new HashMap<>();
 
     @Test
+    @DisplayName("Single region with no data returns an empty array (not null) and closes the iterator")
     public void testCensusSingle_EmptyInput_ClosesIterator() {
         AgeIteratorWrapper iterator =
                 registerIterator(new AgeIteratorWrapper(Collections.emptyIterator(), "empty"));
@@ -26,6 +28,7 @@ public class TestCensus {
     }
 
     @Test
+    @DisplayName("Single region with one age returns one entry in Position:Age=Total format")
     public void testCensusSingle_1Age_Success() {
             registerIterator(new AgeIteratorWrapper(ImmutableList.of(1).iterator(), "1item"));
         String[] strings = census.top3Ages("1item");
@@ -34,6 +37,8 @@ public class TestCensus {
     }
 
     @Test
+    @DisplayName("Single region: no exception escapes and the iterator is closed "
+            + "(next() throws but the iterator is empty, so only reached if hasNext() isn't checked first)")
     public void testCensusSingle_Exception_HandlesExceptions() {
         AgeIteratorWrapper iterator =
                 registerIterator(new AgeIteratorWrapper(Collections.emptyIterator(), "exception") {
@@ -52,6 +57,8 @@ public class TestCensus {
     }
 
     @Test
+    @DisplayName("Single region with a negative age either ignores it and ranks the valid ages, "
+            + "or throws a RuntimeException; the iterator is closed either way")
     public void testCensusSingle_InvalidAge_ThrowsExceptionOrIgnores() {
         AgeIteratorWrapper iterator =
                 registerIterator(new AgeIteratorWrapper(ImmutableList.of(0, 0, 0, 1, 1, 2, -1).iterator(), "invalidAge"));
@@ -70,6 +77,8 @@ public class TestCensus {
     }
 
     @Test
+    @DisplayName("Single region with 10,000 people: equal totals share a position (dense ranking), "
+            + "tied ages are in ascending order, and top 3 means the top 3 distinct totals")
     public void testCensusSingle_10_000_people_valid() {
         AgeIteratorWrapper iterator =
                 registerIterator(new AgeIteratorWrapper(newPseudoRandomIterator(10_000), "10_000"));
@@ -81,6 +90,7 @@ public class TestCensus {
     }
 
     @Test
+    @DisplayName("Multiple empty regions return a non-null result and close every iterator")
     public void testCensusMultiple_Empty_ClosesAllIterators() {
         List<AgeIteratorWrapper> iterators =
                 IntStream.range(0, 5)
@@ -93,6 +103,8 @@ public class TestCensus {
     }
 
     @Test
+    @DisplayName("Multiple regions where the factory fails for one: the failure doesn't escape, "
+            + "the other regions are still processed and every created iterator is closed")
     public void testCensusMultiple_FailToCreate1_ClosesAllIterators() {
         List<AgeIteratorWrapper> iterators =
                 IntStream.range(0, 5)
@@ -105,6 +117,8 @@ public class TestCensus {
     }
 
     @Test
+    @DisplayName("Multiple regions where the factory fails for one: same as FailToCreate1, "
+            + "since the registered 'failsOn1' region isn't in the requested list")
     public void testCensusMultiple_FailToReturn1Item_ClosesAllIterators() {
         List<AgeIteratorWrapper> iterators =
                 IntStream.range(0, 5)
@@ -124,6 +138,8 @@ public class TestCensus {
     }
 
     @Test
+    @DisplayName("15 regions: totals are summed across regions before ranking "
+            + "(~1 ms per element, so this is where processing regions in parallel pays off)")
     public void testCensusMultiple_15X10_000_regions_Success() {
         List<AgeIteratorWrapper> iterators =
                 IntStream.range(0, 15)
@@ -138,6 +154,8 @@ public class TestCensus {
     }
 
     @Test
+    @DisplayName("Three ages tie for 1st and the next age is 2nd, not 4th (dense ranking); "
+            + "with only two distinct totals there is no 3rd position")
     public void testCensusMultiple_1X1000_regions_share_place_Success() {
         PrimitiveIterator.OfInt iterator = IntStream.range(0, 9999)
                 .map(e -> e % 4)
