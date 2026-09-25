@@ -86,7 +86,7 @@ public class TestCensus {
         Assertions.assertTrue(iterator.closed, "Iterator hasn't been closed.");
         Assertions.assertTrue(strings != null, "Invalid result null.");
         System.out.println(Arrays.toString(strings));
-        Assertions.assertArrayEquals(new String[]{"1:138=93", "2:10=85", "2:35=85", "3:90=84"}, strings);
+        Assertions.assertArrayEquals(new String[]{"1:138=93", "2:10=85", "2:35=85", "3:90=84", "3:106=84"}, strings);
     }
 
     @Test
@@ -183,7 +183,7 @@ public class TestCensus {
                 // ignore
             }
             if (e < 1) {
-                return 35; // Just so we have 10 and 35 as 84 in total.
+                return 35; // Just so we have 10 and 35 as 85 in total.
             }
             return Math.abs(random.nextInt() % 150);
         }).iterator();
