@@ -52,8 +52,8 @@ public class TestCensus {
     }
 
     @Test
-    @DisplayName("Single region: no exception escapes and the iterator is closed "
-            + "(next() throws but the iterator is empty, so only reached if hasNext() isn't checked first)")
+    @DisplayName("Single region with an empty iterator whose next() throws: next() is never called because "
+            + "hasNext() is checked first, and the iterator is closed")
     public void testCensusSingle_Exception_HandlesExceptions() {
         AgeIteratorWrapper iterator =
                 registerIterator(new AgeIteratorWrapper(Collections.emptyIterator(), "exception") {
@@ -65,7 +65,7 @@ public class TestCensus {
         try {
             census.top3Ages("exception");
         } catch (RuntimeException e) {
-            Assertions.fail("Exceptions aren't being treated.");
+            Assertions.fail("next() was called without checking hasNext() first.");
         } finally {
             Assertions.assertTrue(iterator.closed, "Iterator hasn't been closed.");
         }
