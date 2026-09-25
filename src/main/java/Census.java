@@ -1,6 +1,7 @@
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
@@ -97,18 +98,20 @@ public class Census {
                 .sorted(Comparator.comparingLong(AgeCount::count).reversed().thenComparingInt(AgeCount::age))
                 .toList();
 
-        // The index of a total in this list is its position minus one.
-        List<Long> top3Totals = sorted.stream()
-                .map(AgeCount::count)
-                .distinct()
-                .limit(3)
-                .toList();
-
-        return sorted.stream()
-                .takeWhile(ageCount -> top3Totals.contains(ageCount.count()))
-                .map(ageCount -> String.format(OUTPUT_FORMAT,
-                        top3Totals.indexOf(ageCount.count()) + 1, ageCount.age(), ageCount.count()))
-                .toArray(String[]::new);
+        List<String> result = new ArrayList<>();
+        int position = 0;
+        long previousTotal = -1;
+        for (AgeCount ageCount : sorted) {
+            if (ageCount.count() != previousTotal) { // a new total starts the next position
+                position++;
+                previousTotal = ageCount.count();
+            }
+            if (position > 3) {
+                break;
+            }
+            result.add(String.format(OUTPUT_FORMAT, position, ageCount.age(), ageCount.count()));
+        }
+        return result.toArray(String[]::new);
     }
 
     /**
