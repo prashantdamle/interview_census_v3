@@ -1,4 +1,6 @@
 import java.io.Closeable;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.Function;
@@ -36,15 +38,11 @@ public class Census {
      * the 3 most common ages in the format specified by {@link #OUTPUT_FORMAT}.
      */
     public String[] top3Ages(String region) {
-
-//        In the example below, the top three are ages 10, 15 and 12
-//        return new String[]{
-//                String.format(OUTPUT_FORMAT, 1, 10, 38),
-//                String.format(OUTPUT_FORMAT, 2, 15, 35),
-//                String.format(OUTPUT_FORMAT, 3, 12, 30)
-//        };
-
-        throw new UnsupportedOperationException();
+        try (AgeInputIterator iterator = iteratorFactory.apply(region)) {
+            return new String[0];
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     /**
