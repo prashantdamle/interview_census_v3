@@ -1,9 +1,11 @@
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.Function;
+import java.util.stream.IntStream;
 
 /**
  * Implement the two methods below. We expect this class to be stateless and thread safe.
@@ -18,6 +20,11 @@ public class Census {
      * Output format expected by our tests.
      */
     public static final String OUTPUT_FORMAT = "%d:%d=%d"; // Position:Age=Total
+
+    /**
+     * Highest age counted. Ages are used as indexes into a histogram of size {@code MAX_AGE + 1}.
+     */
+    private static final int MAX_AGE = 150;
 
     /**
      * Factory for iterators.
@@ -38,11 +45,18 @@ public class Census {
      * the 3 most common ages in the format specified by {@link #OUTPUT_FORMAT}.
      */
     public String[] top3Ages(String region) {
+        long[] counts = new long[MAX_AGE + 1];
         try (AgeInputIterator iterator = iteratorFactory.apply(region)) {
-            return new String[0];
+            while (iterator.hasNext()) {
+                Integer age = iterator.next();
+                if (isValidAge(age)) {
+                    counts[age]++;
+                }
+            }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+        return toTop3(counts);
     }
 
     /**
@@ -62,6 +76,46 @@ public class Census {
         throw new UnsupportedOperationException();
     }
 
+    /**
+     * Ages outside {@code 0..MAX_AGE}, and nulls, are invalid and are not counted.
+     */
+    private static boolean isValidAge(Integer age) {
+        return age != null && age >= 0 && age <= MAX_AGE;
+    }
+
+    /**
+     * Returns the ages with the 3 highest distinct totals, using dense ranking: ages with equal totals share a
+     * position, and the next total takes the next position (e.g. totals 93, 85, 85, 84 are positions 1, 2, 2, 3).
+     * Entries are ordered by total descending, then by age ascending.
+     */
+    private static String[] toTop3(long[] counts) {
+        // Turn the histogram (index = age, value = total) into one AgeCount per age that has at least one person,
+        // sorted most common first; ages with the same total are ordered youngest first.
+        List<AgeCount> sorted = IntStream.rangeClosed(0, MAX_AGE)
+                .filter(age -> counts[age] > 0)
+                .mapToObj(age -> new AgeCount(age, counts[age]))
+                .sorted(Comparator.comparingLong(AgeCount::count).reversed().thenComparingInt(AgeCount::age))
+                .toList();
+
+        // The index of a total in this list is its position minus one.
+        List<Long> top3Totals = sorted.stream()
+                .map(AgeCount::count)
+                .distinct()
+                .limit(3)
+                .toList();
+
+        return sorted.stream()
+                .takeWhile(ageCount -> top3Totals.contains(ageCount.count()))
+                .map(ageCount -> String.format(OUTPUT_FORMAT,
+                        top3Totals.indexOf(ageCount.count()) + 1, ageCount.age(), ageCount.count()))
+                .toArray(String[]::new);
+    }
+
+    /**
+     * An age and the number of people with that age.
+     */
+    private record AgeCount(int age, long count) {
+    }
 
     /**
      * Implementations of this interface will return ages on call to {@link Iterator#next()}. They may open resources
