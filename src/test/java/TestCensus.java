@@ -300,6 +300,14 @@ public class TestCensus {
     }
 
     @Test
+    @DisplayName("A region listed more than once is counted once")
+    public void testCensusMultiple_DuplicateRegions_CountedOnce() {
+        registerIterator(new AgeIteratorWrapper(ImmutableList.of(20, 20, 30).iterator(), "listedTwice"));
+        Assertions.assertArrayEquals(new String[]{"1:20=2", "2:30=1"},
+                census.top3Ages(List.of("listedTwice", "listedTwice")));
+    }
+
+    @Test
     @DisplayName("Regions are read in parallel, on no more threads than there are cores")
     public void testCensusMultiple_ReadsRegionsInParallel() {
         int cores = Runtime.getRuntime().availableProcessors();

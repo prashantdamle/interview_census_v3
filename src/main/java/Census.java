@@ -4,6 +4,7 @@ import java.lang.System.Logger.Level;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -68,7 +69,10 @@ public class Census {
      */
     public String[] top3Ages(List<String> regionNames) {
         Objects.requireNonNull(regionNames, "regionNames");
-        if (regionNames.isEmpty()) {
+        // A copy, because the caller's list could change while we work, without duplicates, because a region
+        // counts once however often it is listed.
+        List<String> regions = List.copyOf(new LinkedHashSet<>(regionNames));
+        if (regions.isEmpty()) {
             return new String[0];
         }
 
@@ -77,14 +81,14 @@ public class Census {
         AtomicBoolean failed = new AtomicBoolean();
         // Closing the pool waits for every task to finish, so all opened iterators are closed before this method
         // returns or throws.
-        try (ExecutorService pool = Executors.newFixedThreadPool(Math.min(CORES, regionNames.size()))) {
-            CompletionService<long[]> regions = new ExecutorCompletionService<>(pool);
-            for (String region : regionNames) {
-                regions.submit(() -> countRegion(region, failed::get));
+        try (ExecutorService pool = Executors.newFixedThreadPool(Math.min(CORES, regions.size()))) {
+            CompletionService<long[]> results = new ExecutorCompletionService<>(pool);
+            for (String region : regions) {
+                results.submit(() -> countRegion(region, failed::get));
             }
             try {
-                for (int i = 0; i < regionNames.size(); i++) {
-                    long[] counts = regions.take().get(); // in the order regions finish, not the order submitted
+                for (int i = 0; i < regions.size(); i++) {
+                    long[] counts = results.take().get(); // in the order regions finish, not the order submitted
                     for (int age = 0; age <= MAX_AGE; age++) {
                         totals[age] += counts[age];
                     }
