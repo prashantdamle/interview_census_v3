@@ -129,6 +129,7 @@ public class Census {
         }
         AgeInputIterator iterator = openRegion(region);
         long[] counts = new long[MAX_AGE + 1];
+        long invalidAges = 0;
         boolean stopped = false;
         // The factory may hand the same iterator to several callers. Hold its lock while reading and closing it,
         // so callers take turns instead of interleaving hasNext()/next() calls on an iterator that isn't thread safe.
@@ -142,6 +143,8 @@ public class Census {
                     Integer age = iterator.next();
                     if (isValidAge(age)) {
                         counts[age]++;
+                    } else {
+                        invalidAges++;
                     }
                 }
             } catch (IOException | RuntimeException e) {
@@ -155,6 +158,9 @@ public class Census {
         }
         if (stopped) {
             throw new CancellationException("Stopped reading region " + region);
+        }
+        if (invalidAges > 0) {
+            LOGGER.log(Level.WARNING, "Skipped {0} invalid ages in region {1}", invalidAges, region);
         }
         return counts;
     }
