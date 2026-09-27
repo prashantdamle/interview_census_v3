@@ -15,6 +15,15 @@ Each change is in its own commit with the reason in the commit message.
   by code that calls `next()` without checking `hasNext()`. Kept it, but changed its failure message from "Exceptions
   aren't being treated." to "next() was called without checking hasNext() first.", because the old message suggested
   exceptions should be swallowed, which conflicts with the fail-fast policy below.
+- **`testCensusMultiple_FailToCreate1_ClosesAllIterators`**: expected a region the factory can't open to be skipped
+  and a result returned. Under the fail-fast policy below it now expects a `CensusException` naming the region. Its
+  "all iterators closed" check was removed: the failing region is first in the list, so no other iterator is ever
+  opened and there is nothing to close.
+- **`testCensusMultiple_FailToReturn1Item_ClosesAllIterators`**: as provided, it never exercised a failing
+  iterator. Its `failsOn1` region wasn't in the requested list, and its data was empty, so the throwing `next()`
+  could never be reached. It also duplicated `FailToCreate1` by including the `"invalid"` region. Now `failsOn1`
+  has one item and sits in the middle of the list, and the test checks for a `CensusException` naming it and that
+  it and the regions read before it were closed. Method names are kept as provided.
 - **`@DisplayName`** added to every test to describe what it checks.
 
 ## Ranking
@@ -44,8 +53,16 @@ data would be a wrong answer, so the caller is always told.
   exception as the cause.
 - Every failure is logged at ERROR (`System.Logger`, no extra dependency) before it is thrown.
 - **An iterator that was opened is always closed** (try-with-resources), including on failure.
-- Design note: a factory should ideally return an *empty iterator* for a region with no data rather than throw or
-  return `null`. `Census` doesn't control the factory, though, so it treats both as failures.
+- **Multiple regions: stop at the first failure.** The remaining regions are not read. Reading a healthy region costs
+  time proportional to its population, and once one region has failed the result is already known to be a failure.
+  Reporting every failing region instead would rarely help: failures while reading are typically I/O errors, which
+  can't be fixed by looking at the exception, so the next step (fix the environment, retry) is the same either way.
+- **A region with no population is not an error.** A region where nobody lives (e.g. a hot desert) is expected to
+  come back as an *empty iterator*: the single-region method returns an empty result and the multi-region method
+  adds nothing to the totals.
+- **`null` from the factory is still a failure.** It could mean "nobody lives here", but it could equally mean "the
+  region couldn't be found or opened" (e.g. a mistyped region name). Treating it as "no population" would turn such
+  mistakes into a silently wrong answer, whereas an empty iterator says "no data" unambiguously.
 
 ## Thread safety
 
