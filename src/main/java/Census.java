@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletionService;
@@ -209,7 +210,7 @@ public class Census {
             if (position > 3) {
                 break;
             }
-            result.add(String.format(OUTPUT_FORMAT, position, ageCount.age(), ageCount.count()));
+            result.add(String.format(Locale.ROOT, OUTPUT_FORMAT, position, ageCount.age(), ageCount.count()));
         }
         return result.toArray(String[]::new);
     }

@@ -55,6 +55,19 @@ public class TestCensus {
     }
 
     @Test
+    @DisplayName("Output uses ASCII digits whatever the JVM's default locale")
+    public void testCensusSingle_NonEnglishLocale_UsesAsciiDigits() {
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("ar-EG")); // formats numbers with Arabic-Indic digits
+            registerIterator(new AgeIteratorWrapper(ImmutableList.of(35, 35).iterator(), "arabicLocale"));
+            Assertions.assertArrayEquals(new String[]{"1:35=2"}, census.top3Ages("arabicLocale"));
+        } finally {
+            Locale.setDefault(original);
+        }
+    }
+
+    @Test
     @DisplayName("Single region with an empty iterator whose next() throws: next() is never called because "
             + "hasNext() is checked first, and the iterator is closed")
     public void testCensusSingle_Exception_HandlesExceptions() {
