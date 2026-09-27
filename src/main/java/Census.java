@@ -90,15 +90,25 @@ public class Census {
                     }
                 }
             } catch (ExecutionException e) {
-                failed.set(true);
+                stopRemainingRegions(failed, pool);
                 throw asCensusException(e.getCause());
             } catch (InterruptedException e) {
-                failed.set(true);
+                stopRemainingRegions(failed, pool);
                 Thread.currentThread().interrupt();
                 throw failure("Interrupted while counting regions", e);
             }
         }
         return toTop3(totals);
+    }
+
+    /**
+     * Stops the regions that are still running after a failure. The flag stops regions between records, even if
+     * their iterator ignores interrupts; the interrupt stops regions blocked inside a read. The flag is set first, so
+     * an interrupted region knows it was stopped rather than failed.
+     */
+    private static void stopRemainingRegions(AtomicBoolean failed, ExecutorService pool) {
+        failed.set(true);
+        pool.shutdownNow();
     }
 
     /**
@@ -131,6 +141,11 @@ public class Census {
                     }
                 }
             } catch (IOException | RuntimeException e) {
+                if (stopRequested.getAsBoolean()) {
+                    // Another region failed and this read was interrupted as a result: a normal stop, not a
+                    // failure of this region.
+                    throw new CancellationException("Stopped reading region " + region);
+                }
                 throw failure("Failed to read region " + region, e);
             }
         }

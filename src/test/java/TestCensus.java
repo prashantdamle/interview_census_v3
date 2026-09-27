@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -350,6 +351,44 @@ public class TestCensus {
         Assertions.assertTrue(failing.closed, "Failing iterator hasn't been closed.");
         Assertions.assertTrue(slowRecordsRead.get() < 3000, "The slow region was read in full.");
         Assertions.assertTrue(slowRecordsRead.get() == 0 || slow.closed, "The slow iterator was read but not closed.");
+    }
+
+    @Test
+    @DisplayName("When one region fails, a region blocked in a long read is interrupted instead of being waited for")
+    public void testCensusMultiple_FailingRegion_InterruptsBlockedRegion() {
+        Assumptions.assumeTrue(Runtime.getRuntime().availableProcessors() > 1, "Needs both regions read at once.");
+
+        CountDownLatch blockedIsReading = new CountDownLatch(1);
+        AtomicBoolean blockedWasInterrupted = new AtomicBoolean();
+        registerIterator(new AgeIteratorWrapper(ImmutableList.of(1).iterator(), "blocked") {
+            @Override
+            public Integer next() {
+                blockedIsReading.countDown();
+                try {
+                    Thread.sleep(10_000); // stands in for a hung network read
+                } catch (InterruptedException e) {
+                    blockedWasInterrupted.set(true);
+                    throw new RuntimeException("Read interrupted", e);
+                }
+                return super.next();
+            }
+        });
+        registerIterator(new AgeIteratorWrapper(ImmutableList.of(1).iterator(), "failsWhileOtherIsBlocked") {
+            @Override
+            public Integer next() {
+                try {
+                    blockedIsReading.await(5, TimeUnit.SECONDS); // fail only once the other region is blocked
+                } catch (InterruptedException e) {
+                    // ignore
+                }
+                throw new RuntimeException("Couldn't return item");
+            }
+        });
+
+        CensusException e = Assertions.assertThrows(CensusException.class,
+                () -> census.top3Ages(List.of("blocked", "failsWhileOtherIsBlocked")));
+        Assertions.assertTrue(e.getMessage().contains("failsWhileOtherIsBlocked"), "Message doesn't name the region.");
+        Assertions.assertTrue(blockedWasInterrupted.get(), "The blocked region was waited for instead of interrupted.");
     }
 
     // HELPER METHODS
