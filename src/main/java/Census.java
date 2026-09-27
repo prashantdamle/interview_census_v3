@@ -50,7 +50,7 @@ public class Census {
      * @param iteratorFactory factory for the iterators.
      */
     public Census(Function<String, Census.AgeInputIterator> iteratorFactory) {
-        this.iteratorFactory = iteratorFactory;
+        this.iteratorFactory = Objects.requireNonNull(iteratorFactory, "iteratorFactory");
     }
 
     /**

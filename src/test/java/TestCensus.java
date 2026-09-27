@@ -20,6 +20,12 @@ public class TestCensus {
     private static Map<String, Census.AgeInputIterator> createdIterators = new HashMap<>();
 
     @Test
+    @DisplayName("Creating a Census without a factory fails straight away, not later as a region failure")
+    public void testCensus_NullFactory_ThrowsNullPointerException() {
+        Assertions.assertThrows(NullPointerException.class, () -> new Census(null));
+    }
+
+    @Test
     @DisplayName("Single region the factory fails to open (throws) throws CensusException naming the region")
     public void testCensusSingle_FactoryThrows_ThrowsCensusException() {
         CensusException e = Assertions.assertThrows(CensusException.class, () -> census.top3Ages("unknownRegion"));
