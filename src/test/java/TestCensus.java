@@ -197,38 +197,43 @@ public class TestCensus {
     }
 
     @Test
-    @DisplayName("Multiple regions where the factory fails for one: the failure doesn't escape, "
-            + "the other regions are still processed and every created iterator is closed")
+    @DisplayName("Multiple regions where the factory fails for the first one: throws CensusException naming the region")
     public void testCensusMultiple_FailToCreate1_ClosesAllIterators() {
         List<AgeIteratorWrapper> iterators =
                 IntStream.range(0, 5)
                         .mapToObj(e -> registerIterator(new AgeIteratorWrapper(Collections.emptyIterator(), "empty" + e)))
                         .collect(Collectors.toList());
 
-        String[] strings = census.top3Ages(Stream.concat(Stream.of("invalid"), iterators.stream().map(e -> e.region)).collect(Collectors.toList()));
-        Assertions.assertFalse(iterators.stream().anyMatch(e -> !e.closed), "Iterator hasn't been closed.");
-        Assertions.assertTrue(strings != null, "Invalid result null.");
+        List<String> regions = Stream.concat(Stream.of("invalid"), iterators.stream().map(e -> e.region)).collect(Collectors.toList());
+        CensusException e = Assertions.assertThrows(CensusException.class, () -> census.top3Ages(regions));
+        Assertions.assertTrue(e.getMessage().contains("invalid"), "Message doesn't name the region.");
     }
 
     @Test
-    @DisplayName("Multiple regions where the factory fails for one: same as FailToCreate1, "
-            + "since the registered 'failsOn1' region isn't in the requested list")
+    @DisplayName("Multiple regions where one in the middle fails to return an item: throws CensusException naming it, "
+            + "and it and the regions read before it are closed")
     public void testCensusMultiple_FailToReturn1Item_ClosesAllIterators() {
         List<AgeIteratorWrapper> iterators =
                 IntStream.range(0, 5)
                         .mapToObj(e -> registerIterator(new AgeIteratorWrapper(Collections.emptyIterator(), "empty" + e)))
                         .collect(Collectors.toList());
 
-        registerIterator(new AgeIteratorWrapper(Collections.emptyIterator(), "failsOn1") {
+        // Has one item, so next() is actually called and fails.
+        AgeIteratorWrapper failsOn1 = registerIterator(new AgeIteratorWrapper(ImmutableList.of(1).iterator(), "failsOn1") {
             @Override
             public Integer next() {
                 throw new RuntimeException("Couldn't return item");
             }
         });
 
-        String[] strings = census.top3Ages(Stream.concat(Stream.of("invalid"), iterators.stream().map(e -> e.region)).collect(Collectors.toList()));
-        Assertions.assertFalse(iterators.stream().anyMatch(e -> !e.closed), "Iterator hasn't been closed.");
-        Assertions.assertTrue(strings != null, "Invalid result null.");
+        // Regions after failsOn1 are never opened (fail fast).
+        List<String> regions = List.of("empty0", "empty1", "failsOn1", "empty2", "empty3", "empty4");
+
+        CensusException e = Assertions.assertThrows(CensusException.class, () -> census.top3Ages(regions));
+        Assertions.assertTrue(e.getMessage().contains("failsOn1"), "Message doesn't name the region.");
+        Assertions.assertTrue(failsOn1.closed, "Failing iterator hasn't been closed.");
+        Assertions.assertTrue(iterators.get(0).closed && iterators.get(1).closed,
+                "An iterator read before the failure hasn't been closed.");
     }
 
     @Test

@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.IntStream;
 
@@ -57,15 +58,15 @@ public class Census {
      * We expect you to make use of all cores in the machine, specified by {@link #CORES).
      */
     public String[] top3Ages(List<String> regionNames) {
-
-//        In the example below, the top three are ages 10, 15 and 12
-//        return new String[]{
-//                String.format(OUTPUT_FORMAT, 1, 10, 38),
-//                String.format(OUTPUT_FORMAT, 2, 15, 35),
-//                String.format(OUTPUT_FORMAT, 3, 12, 30)
-//        };
-
-        throw new UnsupportedOperationException();
+        Objects.requireNonNull(regionNames, "regionNames");
+        long[] totals = new long[MAX_AGE + 1];
+        for (String region : regionNames) {
+            long[] counts = countRegion(region);
+            for (int age = 0; age <= MAX_AGE; age++) {
+                totals[age] += counts[age];
+            }
+        }
+        return toTop3(totals);
     }
 
     /**
