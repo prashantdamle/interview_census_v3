@@ -79,3 +79,24 @@ data would be a wrong answer, so the caller is always told.
   mean caching results inside `Census`, which would make it stateful; that's out of scope.
 - A lock stored on `Census` (e.g. a map from iterator to lock) was rejected because it adds shared mutable state.
   Locking the object itself is the standard JDK pattern (compare `Collections.synchronizedList`).
+
+## Multi-threading (multi-region method)
+
+- **Regions are read in parallel on a fixed pool of `min(CORES, number of regions)` threads**, one task per region.
+  Parallelism is across regions only; a single region's iterator is sequential and can't be split, so the
+  single-region method runs on the caller's thread.
+- **Each task counts into its own histogram, and the calling thread adds them up** as tasks finish
+  (`ExecutorCompletionService`). There's no shared counter for threads to contend on; the merge is 151 additions per
+  region.
+- **The pool is created per call and closed with try-with-resources** (`ExecutorService` is `AutoCloseable` since Java
+  19), so `Census` stays stateless and no threads outlive the call. Closing waits for every task, so all opened
+  iterators are closed before the method returns or throws.
+- **A dedicated pool rather than `parallelStream()`**: the common `ForkJoinPool` can't be sized to `CORES` as the
+  javadoc asks, is shared with the rest of the JVM, and isn't meant for blocking I/O like these iterators.
+- **Stopping on the first failure uses a per-call flag, not thread interrupts.** Once a region fails, the others stop
+  before their next record, and regions that haven't started are skipped without being opened. Interrupts weren't
+  reliable enough: an iterator that catches and ignores `InterruptedException` (as the test iterators do) clears the
+  interrupt and would carry on reading its whole region. The flag is local to the call, so `Census` stays stateless.
+- **Result:** `testCensusMultiple_15X10_000_regions_Success` went from 20.6 s (sequential) to 2.8 s on a 12-core
+  machine. With a slow healthy region and a failing one, the call fails in about 20 ms instead of waiting for the slow
+  region to finish.
