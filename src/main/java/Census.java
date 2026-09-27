@@ -77,15 +77,19 @@ public class Census {
     private long[] countRegion(String region) {
         AgeInputIterator iterator = openRegion(region);
         long[] counts = new long[MAX_AGE + 1];
-        try (iterator) {
-            while (iterator.hasNext()) {
-                Integer age = iterator.next();
-                if (isValidAge(age)) {
-                    counts[age]++;
+        // The factory may hand the same iterator to several callers. Hold its lock while reading and closing it,
+        // so callers take turns instead of interleaving hasNext()/next() calls on an iterator that isn't thread safe.
+        synchronized (iterator) {
+            try (iterator) {
+                while (iterator.hasNext()) {
+                    Integer age = iterator.next();
+                    if (isValidAge(age)) {
+                        counts[age]++;
+                    }
                 }
+            } catch (IOException | RuntimeException e) {
+                throw failure("Failed to read region " + region, e);
             }
-        } catch (IOException | RuntimeException e) {
-            throw failure("Failed to read region " + region, e);
         }
         return counts;
     }

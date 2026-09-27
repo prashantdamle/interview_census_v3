@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -142,6 +143,44 @@ public class TestCensus {
         CensusException e = Assertions.assertThrows(CensusException.class, () -> census.top3Ages("hasNextFails"));
         Assertions.assertTrue(e.getMessage().contains("hasNextFails"), "Message doesn't name the region.");
         Assertions.assertTrue(iterator.closed, "Iterator hasn't been closed.");
+    }
+
+    @Test
+    @DisplayName("Two threads given the same iterator by the factory take turns: one reads all the data, "
+            + "the other finds the iterator closed and gets CensusException")
+    public void testCensusSingle_SharedIterator_ReadByOneThreadOnly() throws InterruptedException {
+        Iterator<Integer> slowAges = IntStream.range(0, 400).map(e -> {
+            try {
+                Thread.sleep(1); // slow enough that both threads are reading at the same time
+            } catch (InterruptedException e1) {
+                // ignore
+            }
+            return e % 4;
+        }).iterator();
+        registerIterator(new AgeIteratorWrapper(slowAges, "shared"));
+
+        CyclicBarrier bothReady = new CyclicBarrier(2);
+        Callable<String[]> call = () -> {
+            bothReady.await();
+            return census.top3Ages("shared");
+        };
+
+        List<String[]> results = new ArrayList<>();
+        List<Throwable> failures = new ArrayList<>();
+        try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
+            for (Future<String[]> future : pool.invokeAll(List.of(call, call))) {
+                try {
+                    results.add(future.get());
+                } catch (ExecutionException e) {
+                    failures.add(e.getCause());
+                }
+            }
+        }
+
+        Assertions.assertEquals(1, results.size(), "Exactly one caller should read the data.");
+        Assertions.assertArrayEquals(new String[]{"1:0=100", "1:1=100", "1:2=100", "1:3=100"}, results.get(0));
+        Assertions.assertEquals(1, failures.size(), "Exactly one caller should fail.");
+        Assertions.assertInstanceOf(CensusException.class, failures.get(0));
     }
 
     @Test
