@@ -215,12 +215,6 @@ public class Census {
     }
 
     /**
-     * An age and the number of people with that age.
-     */
-    private record AgeCount(int age, long count) {
-    }
-
-    /**
      * Implementations of this interface will return ages on call to {@link Iterator#next()}. They may open resources
      * when being instantiated created.
      */
