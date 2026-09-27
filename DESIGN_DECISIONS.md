@@ -46,3 +46,19 @@ data would be a wrong answer, so the caller is always told.
 - **An iterator that was opened is always closed** (try-with-resources), including on failure.
 - Design note: a factory should ideally return an *empty iterator* for a region with no data rather than throw or
   return `null`. `Census` doesn't control the factory, though, so it treats both as failures.
+
+## Thread safety
+
+- **`Census` holds no mutable state.** Its only field is the `final` factory, and each call counts into its own local
+  histogram, so concurrent calls don't share anything they write to.
+- **Iterators are not assumed to be unique per call.** The factory is supplied from outside and may return the same
+  iterator instance to several callers (the test factory does). Iterators aren't thread safe, so each call holds
+  **the iterator's own lock (`synchronized (iterator)`) while reading and closing it**. Callers with different
+  iterators never block each other; callers sharing one take turns, so every record is counted exactly once.
+- **Closing happens inside the lock**, so the next caller always sees the iterator already closed. It never sees a
+  half-finished state where the iterator is drained but not yet closed.
+- **A shared iterator can only be read once.** The first caller gets the full result. A later caller finds it closed
+  and gets a `CensusException`, consistent with the fail-fast policy. Letting both callers get the full data would
+  mean caching results inside `Census`, which would make it stateful; that's out of scope.
+- A lock stored on `Census` (e.g. a map from iterator to lock) was rejected because it adds shared mutable state.
+  Locking the object itself is the standard JDK pattern (compare `Collections.synchronizedList`).
