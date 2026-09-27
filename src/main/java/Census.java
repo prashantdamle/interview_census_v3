@@ -20,7 +20,12 @@ import java.util.function.Function;
 import java.util.stream.IntStream;
 
 /**
- * Implement the two methods below. We expect this class to be stateless and thread safe.
+ * Finds the most common ages in census data, for one region or across several. Each region's ages come from an
+ * iterator created by the factory passed to the constructor.
+ * <p>
+ * Stateless and thread safe: the only field is the factory, and each call counts into its own local data. If the
+ * factory hands the same iterator to several callers, they take turns reading it. Any failure to read a region fails
+ * the whole call with a {@link CensusException}, and every iterator that was opened is closed.
  */
 public class Census {
     /**
@@ -38,6 +43,9 @@ public class Census {
      */
     private static final int MAX_AGE = 150;
 
+    /**
+     * Logs failures (ERROR) and skipped invalid ages (WARNING).
+     */
     private static final System.Logger LOGGER = System.getLogger(Census.class.getName());
 
     /**
@@ -57,6 +65,13 @@ public class Census {
     /**
      * Given one region name, call {@link #iteratorFactory} to get an iterator for this region and return
      * the 3 most common ages in the format specified by {@link #OUTPUT_FORMAT}.
+     * <p>
+     * Ages with the same total share a position, so more than 3 entries can be returned. A region with no people
+     * returns an empty array. Invalid ages (null, or outside 0..{@value #MAX_AGE}) are skipped.
+     *
+     * @param region the region to count.
+     * @return the most common ages, as {@code Position:Age=Total} strings, most common first.
+     * @throws CensusException if the region cannot be opened, or fails while being read.
      */
     public String[] top3Ages(String region) {
         return toTop3(countRegion(region, () -> false));
@@ -65,7 +80,16 @@ public class Census {
     /**
      * Given a list of region names, call {@link #iteratorFactory} to get an iterator for each region and return
      * the 3 most common ages across all regions in the format specified by {@link #OUTPUT_FORMAT}.
-     * We expect you to make use of all cores in the machine, specified by {@link #CORES).
+     * <p>
+     * Regions are read in parallel, on up to {@link #CORES} threads. Ages with the same total share a position, as in
+     * {@link #top3Ages(String)}. A region listed more than once is counted once, and an empty list returns an empty
+     * array.
+     *
+     * @param regionNames the regions to count together.
+     * @return the most common ages across all the regions, as {@code Position:Age=Total} strings, most common first.
+     * @throws CensusException      if any region cannot be opened, or fails while being read. The other regions are
+     *                              stopped, and every iterator that was opened is closed before this method throws.
+     * @throws NullPointerException if the list, or a region name in it, is null.
      */
     public String[] top3Ages(List<String> regionNames) {
         Objects.requireNonNull(regionNames, "regionNames");
