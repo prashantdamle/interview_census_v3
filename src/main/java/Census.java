@@ -6,6 +6,14 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.stream.IntStream;
 
@@ -49,7 +57,7 @@ public class Census {
      * the 3 most common ages in the format specified by {@link #OUTPUT_FORMAT}.
      */
     public String[] top3Ages(String region) {
-        return toTop3(countRegion(region));
+        return toTop3(countRegion(region, () -> false));
     }
 
     /**
@@ -59,11 +67,34 @@ public class Census {
      */
     public String[] top3Ages(List<String> regionNames) {
         Objects.requireNonNull(regionNames, "regionNames");
+        if (regionNames.isEmpty()) {
+            return new String[0];
+        }
+
         long[] totals = new long[MAX_AGE + 1];
-        for (String region : regionNames) {
-            long[] counts = countRegion(region);
-            for (int age = 0; age <= MAX_AGE; age++) {
-                totals[age] += counts[age];
+        // Set on the first failure, so regions still being read stop early and regions not yet started are skipped.
+        AtomicBoolean failed = new AtomicBoolean();
+        // Closing the pool waits for every task to finish, so all opened iterators are closed before this method
+        // returns or throws.
+        try (ExecutorService pool = Executors.newFixedThreadPool(Math.min(CORES, regionNames.size()))) {
+            CompletionService<long[]> regions = new ExecutorCompletionService<>(pool);
+            for (String region : regionNames) {
+                regions.submit(() -> countRegion(region, failed::get));
+            }
+            try {
+                for (int i = 0; i < regionNames.size(); i++) {
+                    long[] counts = regions.take().get(); // in the order regions finish, not the order submitted
+                    for (int age = 0; age <= MAX_AGE; age++) {
+                        totals[age] += counts[age];
+                    }
+                }
+            } catch (ExecutionException e) {
+                failed.set(true);
+                throw asCensusException(e.getCause());
+            } catch (InterruptedException e) {
+                failed.set(true);
+                Thread.currentThread().interrupt();
+                throw failure("Interrupted while counting regions", e);
             }
         }
         return toTop3(totals);
@@ -72,17 +103,27 @@ public class Census {
     /**
      * Counts the ages of one region into a histogram (index = age, value = number of people).
      *
+     * @param stopRequested checked before opening the region and before each record. Once it returns true the region
+     *                      is abandoned with a {@link CancellationException}.
      * @throws CensusException if the region cannot be opened, or fails while being read or closed. The iterator is
      *                         always closed once opened.
      */
-    private long[] countRegion(String region) {
+    private long[] countRegion(String region, BooleanSupplier stopRequested) {
+        if (stopRequested.getAsBoolean()) {
+            throw new CancellationException("Skipped region " + region);
+        }
         AgeInputIterator iterator = openRegion(region);
         long[] counts = new long[MAX_AGE + 1];
+        boolean stopped = false;
         // The factory may hand the same iterator to several callers. Hold its lock while reading and closing it,
         // so callers take turns instead of interleaving hasNext()/next() calls on an iterator that isn't thread safe.
         synchronized (iterator) {
             try (iterator) {
                 while (iterator.hasNext()) {
+                    if (stopRequested.getAsBoolean()) {
+                        stopped = true;
+                        break;
+                    }
                     Integer age = iterator.next();
                     if (isValidAge(age)) {
                         counts[age]++;
@@ -91,6 +132,9 @@ public class Census {
             } catch (IOException | RuntimeException e) {
                 throw failure("Failed to read region " + region, e);
             }
+        }
+        if (stopped) {
+            throw new CancellationException("Stopped reading region " + region);
         }
         return counts;
     }
@@ -109,6 +153,20 @@ public class Census {
             throw failure("Failed to open region " + region + ": the factory returned no iterator", null);
         }
         return iterator;
+    }
+
+    /**
+     * Returns the failure of a region task as a {@link CensusException}. Tasks already throw CensusException for
+     * every failure they handle; anything else is unexpected and is wrapped.
+     */
+    private static CensusException asCensusException(Throwable cause) {
+        if (cause instanceof CensusException censusException) {
+            return censusException;
+        }
+        if (cause instanceof Error error) {
+            throw error;
+        }
+        return failure("Unexpected failure while counting regions", cause);
     }
 
     /**

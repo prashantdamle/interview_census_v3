@@ -1,11 +1,13 @@
 import com.google.common.collect.ImmutableList;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -271,7 +273,81 @@ public class TestCensus {
         Assertions.assertArrayEquals(new String[]{"1:0=2500", "1:1=2500", "1:2=2500", "2:3=2499"}, strings);
     }
 
+    @Test
+    @DisplayName("An empty list of regions returns an empty result")
+    public void testCensusMultiple_EmptyList_ReturnsEmpty() {
+        Assertions.assertArrayEquals(new String[]{}, census.top3Ages(List.of()));
+    }
+
+    @Test
+    @DisplayName("Regions are read in parallel, on no more threads than there are cores")
+    public void testCensusMultiple_ReadsRegionsInParallel() {
+        int cores = Runtime.getRuntime().availableProcessors();
+        Assumptions.assumeTrue(cores > 1, "Reading in parallel needs more than one core.");
+
+        AtomicInteger readingNow = new AtomicInteger();
+        AtomicInteger mostReadingAtOnce = new AtomicInteger();
+        // Twice as many regions as cores, so the pool is kept full.
+        List<String> regions = IntStream.range(0, cores * 2)
+                .mapToObj(i -> registerIterator(new AgeIteratorWrapper(Collections.nCopies(50, 30).iterator(), "parallel" + i) {
+                    @Override
+                    public Integer next() {
+                        mostReadingAtOnce.accumulateAndGet(readingNow.incrementAndGet(), Math::max);
+                        try {
+                            sleepOneMillisecond();
+                            return super.next();
+                        } finally {
+                            readingNow.decrementAndGet();
+                        }
+                    }
+                }).region)
+                .collect(Collectors.toList());
+
+        census.top3Ages(regions);
+
+        Assertions.assertTrue(mostReadingAtOnce.get() > 1, "Regions weren't read in parallel.");
+        Assertions.assertTrue(mostReadingAtOnce.get() <= cores,
+                "More regions were read at once (" + mostReadingAtOnce.get() + ") than there are cores (" + cores + ").");
+    }
+
+    @Test
+    @DisplayName("When one region fails, the other regions stop early instead of reading all their data")
+    public void testCensusMultiple_FailingRegion_StopsOtherRegions() {
+        AgeIteratorWrapper failing = registerIterator(new AgeIteratorWrapper(ImmutableList.of(1).iterator(), "failsFirst") {
+            @Override
+            public Integer next() {
+                throw new RuntimeException("Couldn't return item");
+            }
+        });
+        AtomicInteger slowRecordsRead = new AtomicInteger();
+        // Reading all 3000 records would take ~3 seconds.
+        AgeIteratorWrapper slow = registerIterator(new AgeIteratorWrapper(Collections.nCopies(3000, 30).iterator(), "slow3000") {
+            @Override
+            public Integer next() {
+                sleepOneMillisecond();
+                slowRecordsRead.incrementAndGet();
+                return super.next();
+            }
+        });
+
+        // The failing region is first, so even with a single thread the slow region is never read in full.
+        CensusException e = Assertions.assertThrows(CensusException.class,
+                () -> census.top3Ages(List.of("failsFirst", "slow3000")));
+        Assertions.assertTrue(e.getMessage().contains("failsFirst"), "Message doesn't name the region.");
+        Assertions.assertTrue(failing.closed, "Failing iterator hasn't been closed.");
+        Assertions.assertTrue(slowRecordsRead.get() < 3000, "The slow region was read in full.");
+        Assertions.assertTrue(slowRecordsRead.get() == 0 || slow.closed, "The slow iterator was read but not closed.");
+    }
+
     // HELPER METHODS
+
+    private static void sleepOneMillisecond() {
+        try {
+            Thread.sleep(1);
+        } catch (InterruptedException e) {
+            // ignore
+        }
+    }
 
     private Iterator<Integer> newPseudoRandomIterator(int n) {
         Random random = new Random(1000);
