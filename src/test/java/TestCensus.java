@@ -115,6 +115,18 @@ public class TestCensus {
     }
 
     @Test
+    @DisplayName("Single region: null ages and ages above 150 are skipped, while 150 itself is counted")
+    public void testCensusSingle_NullAndTooOldAges_Skipped() {
+        AgeIteratorWrapper iterator = registerIterator(
+                new AgeIteratorWrapper(Arrays.asList(0, 0, 0, 1, 1, 150, null, 151).iterator(), "nullAndTooOld"));
+
+        String[] strings = census.top3Ages("nullAndTooOld");
+
+        Assertions.assertArrayEquals(new String[]{"1:0=3", "2:1=2", "3:150=1"}, strings);
+        Assertions.assertTrue(iterator.closed, "Iterator hasn't been closed.");
+    }
+
+    @Test
     @DisplayName("Single region with 10,000 people: equal totals share a position (dense ranking), "
             + "tied ages are in ascending order, and top 3 means the top 3 distinct totals")
     public void testCensusSingle_10_000_people_valid() {
