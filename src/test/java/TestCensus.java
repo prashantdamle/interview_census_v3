@@ -115,6 +115,18 @@ public class TestCensus {
     }
 
     @Test
+    @DisplayName("Single region: null ages and ages above 150 are skipped, while 150 itself is counted")
+    public void testCensusSingle_NullAndTooOldAges_Skipped() {
+        AgeIteratorWrapper iterator = registerIterator(
+                new AgeIteratorWrapper(Arrays.asList(0, 0, 0, 1, 1, 150, null, 151).iterator(), "nullAndTooOld"));
+
+        String[] strings = census.top3Ages("nullAndTooOld");
+
+        Assertions.assertArrayEquals(new String[]{"1:0=3", "2:1=2", "3:150=1"}, strings);
+        Assertions.assertTrue(iterator.closed, "Iterator hasn't been closed.");
+    }
+
+    @Test
     @DisplayName("Single region with 10,000 people: equal totals share a position (dense ranking), "
             + "tied ages are in ascending order, and top 3 means the top 3 distinct totals")
     public void testCensusSingle_10_000_people_valid() {
@@ -398,6 +410,44 @@ public class TestCensus {
                 () -> census.top3Ages(List.of("blocked", "failsWhileOtherIsBlocked")));
         Assertions.assertTrue(e.getMessage().contains("failsWhileOtherIsBlocked"), "Message doesn't name the region.");
         Assertions.assertTrue(blockedWasInterrupted.get(), "The blocked region was waited for instead of interrupted.");
+    }
+
+    @Test
+    @DisplayName("If the calling thread is interrupted while waiting for regions, it throws CensusException and keeps "
+            + "its interrupt status")
+    public void testCensusMultiple_CallerInterrupted_ThrowsAndKeepsInterruptStatus() {
+        registerIterator(new AgeIteratorWrapper(ImmutableList.of(1).iterator(), "interruptedA"));
+        registerIterator(new AgeIteratorWrapper(ImmutableList.of(2).iterator(), "interruptedB"));
+
+        // Interrupted before the call, so waiting for the first region's result fails straight away.
+        Thread.currentThread().interrupt();
+        try {
+            CensusException e = Assertions.assertThrows(CensusException.class,
+                    () -> census.top3Ages(List.of("interruptedA", "interruptedB")));
+            Assertions.assertTrue(e.getMessage().contains("Interrupted"), "Message doesn't say it was interrupted.");
+            Assertions.assertTrue(Thread.currentThread().isInterrupted(), "Interrupt status wasn't restored.");
+        } finally {
+            Thread.interrupted(); // clear it, so it doesn't leak into other tests run on this thread
+        }
+    }
+
+    @Test
+    @DisplayName("An Error while reading a region is rethrown as is, not wrapped in CensusException, and the "
+            + "iterator is still closed")
+    public void testCensusMultiple_ErrorInRegion_RethrownUnwrapped() {
+        OutOfMemoryError error = new OutOfMemoryError("simulated");
+        AgeIteratorWrapper iterator = registerIterator(new AgeIteratorWrapper(ImmutableList.of(1).iterator(), "error") {
+            @Override
+            public Integer next() {
+                throw error;
+            }
+        });
+
+        OutOfMemoryError thrown = Assertions.assertThrows(OutOfMemoryError.class,
+                () -> census.top3Ages(List.of("error")));
+
+        Assertions.assertSame(error, thrown);
+        Assertions.assertTrue(iterator.closed, "Iterator hasn't been closed.");
     }
 
     // HELPER METHODS
