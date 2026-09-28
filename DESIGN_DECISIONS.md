@@ -68,3 +68,9 @@ Every test also has a `@DisplayName`. New tests cover the other decisions below.
 - Output uses `Locale.ROOT`, so digits are ASCII on every machine (the default locale could print `١:٣٥=٨٥`).
 - A dedicated thread pool rather than `parallelStream()`: the common pool can't be sized to `CORES` and isn't meant
   for blocking I/O.
+
+**Coverage**
+- `./gradlew jacocoTestReport` reports 99% of instructions and 97% of branches. The one line no test reaches is a
+  safety net in `asCensusException`, for a region failure that is neither a `CensusException` nor an `Error`: region
+  tasks wrap every other failure themselves. The path that skips a region because another region already failed is
+  covered only when timing allows, so a test can't rely on it.
