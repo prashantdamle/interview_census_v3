@@ -1,6 +1,7 @@
 # Census: top 3 ages
 
-Implementation of the two `top3Ages` methods in `Census` (see `interview_census_assignment.pdf`).
+Implementation of the two `top3Ages` methods in `Census`: the three most common ages in census data, for one region
+or across several, with regions read in parallel.
 
 ## Running the tests
 
@@ -9,6 +10,9 @@ Implementation of the two `top3Ages` methods in `Census` (see `interview_census_
 ```
 
 Requires Java 19 or later (developed and tested on JDK 25).
+
+To also get a coverage report, run `./gradlew jacocoTestReport`, then open
+`build/reports/jacoco/test/html/index.html`.
 
 ## Where to look
 
