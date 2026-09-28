@@ -412,6 +412,25 @@ public class TestCensus {
         Assertions.assertTrue(blockedWasInterrupted.get(), "The blocked region was waited for instead of interrupted.");
     }
 
+    @Test
+    @DisplayName("If the calling thread is interrupted while waiting for regions, it throws CensusException and keeps "
+            + "its interrupt status")
+    public void testCensusMultiple_CallerInterrupted_ThrowsAndKeepsInterruptStatus() {
+        registerIterator(new AgeIteratorWrapper(ImmutableList.of(1).iterator(), "interruptedA"));
+        registerIterator(new AgeIteratorWrapper(ImmutableList.of(2).iterator(), "interruptedB"));
+
+        // Interrupted before the call, so waiting for the first region's result fails straight away.
+        Thread.currentThread().interrupt();
+        try {
+            CensusException e = Assertions.assertThrows(CensusException.class,
+                    () -> census.top3Ages(List.of("interruptedA", "interruptedB")));
+            Assertions.assertTrue(e.getMessage().contains("Interrupted"), "Message doesn't say it was interrupted.");
+            Assertions.assertTrue(Thread.currentThread().isInterrupted(), "Interrupt status wasn't restored.");
+        } finally {
+            Thread.interrupted(); // clear it, so it doesn't leak into other tests run on this thread
+        }
+    }
+
     // HELPER METHODS
 
     private static void sleepOneMillisecond() {
