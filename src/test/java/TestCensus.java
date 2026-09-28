@@ -431,6 +431,25 @@ public class TestCensus {
         }
     }
 
+    @Test
+    @DisplayName("An Error while reading a region is rethrown as is, not wrapped in CensusException, and the "
+            + "iterator is still closed")
+    public void testCensusMultiple_ErrorInRegion_RethrownUnwrapped() {
+        OutOfMemoryError error = new OutOfMemoryError("simulated");
+        AgeIteratorWrapper iterator = registerIterator(new AgeIteratorWrapper(ImmutableList.of(1).iterator(), "error") {
+            @Override
+            public Integer next() {
+                throw error;
+            }
+        });
+
+        OutOfMemoryError thrown = Assertions.assertThrows(OutOfMemoryError.class,
+                () -> census.top3Ages(List.of("error")));
+
+        Assertions.assertSame(error, thrown);
+        Assertions.assertTrue(iterator.closed, "Iterator hasn't been closed.");
+    }
+
     // HELPER METHODS
 
     private static void sleepOneMillisecond() {
